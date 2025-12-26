@@ -6,22 +6,10 @@
  |_|\_\ |_____| |_| \_\ |_____| |_|  |_| /____|  /_/   \_\   |_|   |___| |_|  |_|
                                                                                  
  ===============================================================================
- DOSYA: 3 - public/src/renderer.js (Frontend Mantığı)
+ DOSYA: 3 - public/src/renderer.js (Frontend Mantığı) - UI Sync Update
  ===============================================================================
- 
- KOD HARİTASI:
- 3.1 - Kütüphane ve DOM Elementleri
- 3.2 - Yükleme Ekranı (Loading Screen Logic)
- 3.3 - Yardımcı UI Fonksiyonları (Alerts, Window Controls)
- 3.4 - Filtreleme Mantığı
- 3.5 - Uygulama Yönetimi (Ekleme, Listeleme, Silme, Düzenleme)
- 3.6 - Konsol Sayfası Mantığı
- 3.7 - Otomatik Başlatma Yöneticisi Mantığı
- 3.8 - IPC Dinleyicileri (Loglar, Kaynak Takibi, Durum)
- 3.9 - Ghost Process Tarama Mantığı (Sonsuz Dönüş Fixi)
 */
 
-// 3.1 - Kütüphane ve DOM Elementleri
 const { ipcRenderer } = require("electron");
 
 const appGrid = document.getElementById("appGrid");
@@ -76,7 +64,7 @@ let appLogs = {};
 let currentFilter = "all";
 let appToDeleteId = null;
 
-// 3.2 - Yükleme Ekranı (Loading Screen Logic)
+// --- BAŞLANGIÇ ---
 document.addEventListener("DOMContentLoaded", async () => {
   setTimeout(async () => {
     if (loadingScreen) {
@@ -86,11 +74,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadingScreen.style.display = "none";
       }, 500);
     }
+    // İlk yüklemede verileri çek
     await loadAndRenderApps();
   }, 3000);
 });
 
-// 3.3 - Yardımcı UI Fonksiyonları (Alerts, Window Controls)
+// --- YARDIMCI FONKSİYONLAR ---
 function showCustomAlert(message, title = "Bilgi") {
   const titleEl = document.getElementById("alertTitle");
   const msgEl = document.getElementById("alertMessage");
@@ -98,7 +87,6 @@ function showCustomAlert(message, title = "Bilgi") {
   if (msgEl) msgEl.innerText = message;
   if (alertModal) alertModal.style.display = "flex";
 }
-
 if (closeAlertModalBtn)
   closeAlertModalBtn.addEventListener(
     "click",
@@ -108,7 +96,6 @@ if (closeAlertModalBtn)
 const minBtn = document.getElementById("minBtn");
 const maxBtn = document.getElementById("maxBtn");
 const closeBtn = document.getElementById("closeBtn");
-
 if (minBtn)
   minBtn.addEventListener("click", () => ipcRenderer.send("minimize-window"));
 if (maxBtn)
@@ -116,17 +103,14 @@ if (maxBtn)
 if (closeBtn)
   closeBtn.addEventListener("click", () => ipcRenderer.send("close-window"));
 
-// 3.4 - Filtreleme Mantığı
-if (filterDropdownBtn) {
+if (filterDropdownBtn)
   filterDropdownBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     filterDropdownMenu.classList.toggle("show");
   });
-}
 window.addEventListener("click", () => {
   if (filterDropdownMenu) filterDropdownMenu.classList.remove("show");
 });
-
 window.applyFilter = (filterType) => {
   currentFilter = filterType;
   if (filterDropdownBtn)
@@ -138,14 +122,12 @@ window.applyFilter = (filterType) => {
   loadAndRenderApps();
 };
 
-// 3.5 - Uygulama Yönetimi (Ekleme, Listeleme, Silme, Düzenleme)
 async function loadAndRenderApps() {
   const apps = await ipcRenderer.invoke("get-apps");
   renderApps(apps);
 }
-
 const addBtn = document.getElementById("addBtn");
-if (addBtn) {
+if (addBtn)
   addBtn.addEventListener("click", async () => {
     const filePath = await ipcRenderer.invoke("select-file");
     if (filePath) {
@@ -162,8 +144,6 @@ if (addBtn) {
       ipcRenderer.send("add-app", newApp);
     }
   });
-}
-
 ipcRenderer.on("update-app-list", (event, apps) => {
   renderApps(apps);
   if (editModal) editModal.style.display = "none";
@@ -171,25 +151,24 @@ ipcRenderer.on("update-app-list", (event, apps) => {
 
 async function renderApps(apps) {
   if (!appGrid) return;
-  appGrid.innerHTML = "";
   const appsWithStatus = await Promise.all(
     apps.map(async (app) => ({
       ...app,
       isRunning: await ipcRenderer.invoke("get-process-status", app.id),
     }))
   );
-
   let filtered = appsWithStatus;
   if (currentFilter === "running")
     filtered = appsWithStatus.filter((a) => a.isRunning);
   else if (currentFilter === "stopped")
     filtered = appsWithStatus.filter((a) => !a.isRunning);
 
+  appGrid.innerHTML = "";
+
   if (filtered.length === 0) {
     appGrid.innerHTML = `<div style="text-align:center; color:#555; grid-column:1/-1; margin-top:50px;">Henüz proje yok.</div>`;
     return;
   }
-
   filtered.forEach((app) => {
     const card = document.createElement("div");
     card.className = "app-card";
@@ -200,9 +179,7 @@ async function renderApps(apps) {
         app.icon.includes(":"))
         ? `<img src="${app.icon}" class="app-icon-img">`
         : `<div class="app-icon-emoji">${app.icon || "🚀"}</div>`;
-
     const dotDisplay = app.isRunning ? "block" : "none";
-
     card.innerHTML = `
         <div class="app-status-dot" id="status-dot-${app.id}" style="display: ${dotDisplay}"></div>
         <button class="edit-card-btn" onclick="openEditModal(${app.id})">⚙️</button>
@@ -230,14 +207,12 @@ window.openEditModal = async (appId) => {
       currentSelectedIcon.length > 5 ? "Resim Dosyası" : currentSelectedIcon;
   if (editModal) editModal.style.display = "flex";
 };
-
 window.selectIcon = (icon) => {
   currentSelectedIcon = icon;
   if (selectedIconDisplay) selectedIconDisplay.innerText = icon;
 };
-
 const uploadImgBtn = document.getElementById("uploadImgBtn");
-if (uploadImgBtn) {
+if (uploadImgBtn)
   uploadImgBtn.addEventListener("click", async () => {
     const imgPath = await ipcRenderer.invoke("select-image");
     if (imgPath) {
@@ -245,18 +220,14 @@ if (uploadImgBtn) {
       if (selectedIconDisplay) selectedIconDisplay.innerText = "Resim Dosyası";
     }
   });
-}
-
 const changePathBtn = document.getElementById("changePathBtn");
-if (changePathBtn) {
+if (changePathBtn)
   changePathBtn.addEventListener("click", async () => {
     const newPath = await ipcRenderer.invoke("select-file");
     if (newPath && editPathInput) editPathInput.value = newPath;
   });
-}
-
 const saveEditBtn = document.getElementById("saveEditBtn");
-if (saveEditBtn) {
+if (saveEditBtn)
   saveEditBtn.addEventListener("click", () => {
     ipcRenderer.send("edit-app", {
       id: currentEditingAppId,
@@ -266,8 +237,6 @@ if (saveEditBtn) {
       autoStart: editAutoStartInput.checked,
     });
   });
-}
-
 const deleteAppBtn = document.getElementById("deleteAppBtn");
 if (deleteAppBtn)
   deleteAppBtn.addEventListener("click", () => {
@@ -275,7 +244,6 @@ if (deleteAppBtn)
     appToDeleteId = currentEditingAppId;
     if (deleteModal) deleteModal.style.display = "flex";
   });
-
 if (confirmDeleteBtn)
   confirmDeleteBtn.addEventListener("click", () => {
     if (appToDeleteId) {
@@ -289,20 +257,18 @@ if (cancelDeleteBtn)
     appToDeleteId = null;
     if (deleteModal) deleteModal.style.display = "none";
   });
-
 const closeModalBtn = document.getElementById("closeModalBtn");
 if (closeModalBtn)
   closeModalBtn.addEventListener("click", () => {
     if (editModal) editModal.style.display = "none";
   });
-
 const cancelEditBtn = document.getElementById("cancelEditBtn");
 if (cancelEditBtn)
   cancelEditBtn.addEventListener("click", () => {
     if (editModal) editModal.style.display = "none";
   });
 
-// 3.6 - Konsol Sayfası Mantığı
+// --- KONSOL SAYFASI ---
 async function openConsolePage(app) {
   currentViewingApp = app;
   if (activeAppName) activeAppName.innerText = app.name;
@@ -310,39 +276,35 @@ async function openConsolePage(app) {
     activeAppPath.innerText = app.path;
     activeAppPath.title = app.path;
   }
-
   if (appLogs[app.id]) terminalOutput.innerText = appLogs[app.id];
   else {
     terminalOutput.innerText = `> Konsol hazır: ${app.name}\n> Başlatmak için butona basın.\n\n`;
     appLogs[app.id] = terminalOutput.innerText;
   }
-
   setTimeout(() => {
     if (terminalOutput) terminalOutput.scrollTop = terminalOutput.scrollHeight;
   }, 50);
   if (dashboardView) dashboardView.style.display = "none";
   if (consoleView) consoleView.style.display = "flex";
 
+  // Detay sayfasına girildiğinde durumu kontrol et
   await updateStatusUI(app.id);
   const pid = await ipcRenderer.invoke("get-process-pid", app.id);
   currentAppPid = pid || null;
   if (statsContainer) statsContainer.style.display = pid ? "flex" : "none";
 }
-
 const backBtn = document.getElementById("backBtn");
-if (backBtn) {
+if (backBtn)
   backBtn.addEventListener("click", () => {
     if (consoleView) consoleView.style.display = "none";
     if (dashboardView) dashboardView.style.display = "block";
     currentViewingApp = null;
     currentAppPid = null;
     if (statsContainer) statsContainer.style.display = "none";
-    loadAndRenderApps();
+    loadAndRenderApps(); // Listeyi yenile
   });
-}
 
-// 3.7 - Otomatik Başlatma Yöneticisi Mantığı
-if (openAutoStartManagerBtn) {
+if (openAutoStartManagerBtn)
   openAutoStartManagerBtn.addEventListener("click", async () => {
     const apps = await ipcRenderer.invoke("get-apps");
     autoStartListContainer.innerHTML = "";
@@ -355,27 +317,15 @@ if (openAutoStartManagerBtn) {
           "display: flex; align-items: center; justify-content: space-between; padding: 10px; border-bottom: 1px solid #222;";
         const isChecked = app.autoStart ? "checked" : "";
         const iconShow = app.icon && app.icon.length < 5 ? app.icon : "🚀";
-        row.innerHTML = `
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="font-size:18px;">${iconShow}</span>
-                        <span style="font-size:14px; font-weight:500;">${app.name}</span>
-                    </div>
-                    <label class="switch" style="display:flex; align-items:center;">
-                        <input type="checkbox" ${isChecked} onchange="toggleAutoStartFromList(${app.id}, this.checked)">
-                        <span class="slider" style="position:relative; width:34px; height:20px; display:inline-block; margin-right:0;"></span>
-                    </label>
-                `;
+        row.innerHTML = `<div style="display:flex; align-items:center; gap:10px;"><span style="font-size:18px;">${iconShow}</span><span style="font-size:14px; font-weight:500;">${app.name}</span></div><label class="switch" style="display:flex; align-items:center;"><input type="checkbox" ${isChecked} onchange="toggleAutoStartFromList(${app.id}, this.checked)"><span class="slider" style="position:relative; width:34px; height:20px; display:inline-block; margin-right:0;"></span></label>`;
         autoStartListContainer.appendChild(row);
       });
     }
     if (autoStartModal) autoStartModal.style.display = "flex";
   });
-}
-
 window.toggleAutoStartFromList = (appId, isEnabled) => {
   ipcRenderer.send("update-auto-start", { appId, enabled: isEnabled });
 };
-
 if (closeAutoStartModalBtn)
   closeAutoStartModalBtn.addEventListener(
     "click",
@@ -387,7 +337,6 @@ if (closeAutoStartBtn)
     () => (autoStartModal.style.display = "none")
   );
 
-// 3.8 - IPC Dinleyicileri (Loglar, Kaynak Takibi, Durum)
 ipcRenderer.on("process-log", (event, { appId, log }) => {
   if (!appLogs[appId]) appLogs[appId] = "";
   appLogs[appId] += log;
@@ -396,7 +345,6 @@ ipcRenderer.on("process-log", (event, { appId, log }) => {
     terminalOutput.scrollTop = terminalOutput.scrollHeight;
   }
 });
-
 ipcRenderer.on("resource-update", (event, stats) => {
   if (
     consoleView &&
@@ -412,19 +360,16 @@ ipcRenderer.on("resource-update", (event, stats) => {
         (stats[currentAppPid].memory / 1024 / 1024).toFixed(1) + " MB";
   }
 });
-
 ipcRenderer.on("process-started", (event, { appId, pid }) => {
   if (currentViewingApp && currentViewingApp.id === appId) currentAppPid = pid;
 });
-
 ipcRenderer.on("app-status-change", async (event, { appId, isRunning }) => {
-  if (dashboardView && dashboardView.style.display !== "none") {
+  if (dashboardView && dashboardView.style.display !== "none")
     await loadAndRenderApps();
-  } else {
+  else {
     const dot = document.getElementById(`status-dot-${appId}`);
     if (dot) dot.style.display = isRunning ? "block" : "none";
   }
-
   if (currentViewingApp && currentViewingApp.id === appId) {
     await updateStatusUI(appId);
     if (isRunning) {
@@ -439,7 +384,6 @@ ipcRenderer.on("app-status-change", async (event, { appId, isRunning }) => {
     }
   }
 });
-
 async function updateStatusUI(appId) {
   const isRunning = await ipcRenderer.invoke("get-process-status", appId);
   if (isRunning) {
@@ -458,8 +402,7 @@ async function updateStatusUI(appId) {
     if (liveBadge) liveBadge.style.display = "none";
   }
 }
-
-if (toggleProcessBtn) {
+if (toggleProcessBtn)
   toggleProcessBtn.addEventListener("click", async () => {
     if (!currentViewingApp) return;
     const isRunning = await ipcRenderer.invoke(
@@ -480,16 +423,14 @@ if (toggleProcessBtn) {
       if (currentViewingApp) updateStatusUI(currentViewingApp.id);
     }, 500);
   });
-}
 
-// 3.9 - Ghost Process Tarama Mantığı (Sonsuz Dönüş Fixi)
 if (scanGhostsBtn) {
   scanGhostsBtn.addEventListener("click", async () => {
     const icon = scanGhostsBtn.querySelector("svg");
     if (icon) icon.classList.add("spinning");
-
     try {
       const ghosts = await ipcRenderer.invoke("scan-ghost-processes");
+      if (icon) setTimeout(() => (icon.style.transform = "none"), 1000);
       showScanResults(ghosts);
     } catch (err) {
       showCustomAlert("Hata: " + err, "Hata");
@@ -498,7 +439,6 @@ if (scanGhostsBtn) {
     }
   });
 }
-
 function showScanResults(ghosts) {
   if (!scanResultsList) return;
   scanResultsList.innerHTML = "";
@@ -508,18 +448,14 @@ function showScanResults(ghosts) {
     ghosts.forEach((ghost) => {
       const item = document.createElement("div");
       item.className = "scan-item";
-      item.innerHTML = `
-        <div class="scan-info">
-            <div class="scan-name">👻 ${ghost.path.replace(
-              /^.*[\\\/]/,
-              ""
-            )}</div>
-            <div class="scan-path" title="${ghost.path}">${ghost.path}</div>
-            <div class="scan-meta"><span>PID: ${ghost.pid}</span><span>PORT: ${
+      item.innerHTML = `<div class="scan-info"><div class="scan-name">👻 ${ghost.path.replace(
+        /^.*[\\\/]/,
+        ""
+      )}</div><div class="scan-path" title="${ghost.path}">${
+        ghost.path
+      }</div><div class="scan-meta"><span>PID: ${ghost.pid}</span><span>PORT: ${
         ghost.port
-      }</span></div>
-        </div>
-        <button class="btn-add-ghost">EKLE</button>`;
+      }</span></div></div><button class="btn-add-ghost">EKLE</button>`;
       item.querySelector(".btn-add-ghost").addEventListener("click", (e) => {
         addGhostApp(ghost);
         e.target.innerText = "EKLENDİ";
@@ -539,7 +475,6 @@ function addGhostApp(g) {
     autoStart: false,
   });
 }
-
 if (closeScanModalBtn)
   closeScanModalBtn.addEventListener("click", () => {
     if (scanModal) scanModal.style.display = "none";
