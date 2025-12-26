@@ -1,0 +1,48 @@
+{
+  "name": "node-launcher",
+  "version": "1.0.0",
+  "description": "Kerem Zayim tarafından geliştirilen, Node.js projelerini kolayca yönetip başlatmanızı sağlayan Node Launcher uygulaması.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "node",
+    "launcher",
+    "process-manager",
+    "dashboard",
+    "electron"
+  ],
+  "author": "Kerem Zayim",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "electron-store": "^6.0.1",
+    "iconv-lite": "^0.7.1",
+    "pidusage": "^4.0.1",
+    "systeminformation": "^5.28.1"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.keremzayim.nodelauncher",
+    "productName": "KZ | Node Launcher",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/images/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

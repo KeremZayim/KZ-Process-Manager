@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>KZ | Node Launcher</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <link rel="stylesheet" href="src/styles.css">
+  <body>
+    <div id="title-bar">
+      <div
+        style="
+          font-size: 12px;
+          color: #888;
+          font-weight: 600;
+          letter-spacing: 1px;
+        "
+      >
+        ⚡ KZ | NODE LAUNCHER
+      </div>
+      <div class="window-controls">
+        <button class="control-btn" id="minBtn">─</button>
+        <button class="control-btn" id="maxBtn">□</button>
+        <button class="control-btn close" id="closeBtn">✕</button>
+      </div>
+    </div>
+
+    <div id="loading-screen">
+      <div class="loader"></div>
+      <div class="loading-text">SİSTEM BAŞLATILIYOR...</div>
+    </div>
+
+    <div id="dashboard-view">
+      <div class="header-section">
+        <div>
+          <h2>Projelerim</h2>
+          <div
+            style="color: var(--text-dim); font-size: 13px; margin-top: 5px"
+          >
+            Yönetim Paneli
+          </div>
+        </div>
+        <button class="add-btn" id="addBtn">+ Yeni Ekle</button>
+      </div>
+      <div class="divider-line"></div>
+      <div class="sub-toolbar">
+        <button
+          id="openAutoStartManagerBtn"
+          class="filter-toggle-btn"
+          title="Otomatik Başlatma Yöneticisi"
+        >
+          ⚡
+        </button>
+        <button
+          id="scanGhostsBtn"
+          class="filter-toggle-btn"
+          title="Dışarıda Çalışanları Tara"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M2 12h20M12 2v20" />
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="4" />
+          </svg>
+        </button>
+        <div class="filter-dropdown-wrapper">
+          <button
+            id="filterDropdownBtn"
+            class="filter-toggle-btn"
+            title="Filtrele"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon
+                points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"
+              ></polygon>
+            </svg>
+          </button>
+          <div id="filterDropdownMenu" class="dropdown-content">
+            <div class="dropdown-item" onclick="applyFilter('all')">
+              <span>📋</span> Hepsi
+            </div>
+            <div class="dropdown-item" onclick="applyFilter('running')">
+              <span style="color: var(--success)">▶</span> Çalışanlar
+            </div>
+            <div class="dropdown-item" onclick="applyFilter('stopped')">
+              <span style="color: var(--danger)">⏹</span> Durmuşlar
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid-container" id="appGrid"></div>
+    </div>
+
+    <div id="console-view">
+      <div class="console-toolbar">
+        <div class="toolbar-left">
+          <button class="back-icon-btn" id="backBtn">←</button>
+          <div
+            style="
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              margin-left: 10px;
+              margin-right: 20px;
+            "
+          >
+            <span
+              id="activeAppName"
+              style="font-weight: 600; font-size: 14px; line-height: 1.2"
+              >Uygulama Adı</span
+            >
+            <span
+              id="activeAppPath"
+              style="
+                font-size: 10px;
+                color: #666;
+                max-width: 400px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              "
+              >...</span
+            >
+          </div>
+          <div id="statsContainer" style="display: none; gap: 10px">
+            <div
+              class="status-badge"
+              style="
+                background: rgba(59, 130, 246, 0.15);
+                color: #3b82f6;
+                border-color: rgba(59, 130, 246, 0.3);
+              "
+            >
+              <span>⚡ <span id="cpuValue">0%</span></span>
+            </div>
+            <div
+              class="status-badge"
+              style="
+                background: rgba(245, 158, 11, 0.15);
+                color: #f59e0b;
+                border-color: rgba(245, 158, 11, 0.3);
+              "
+            >
+              <span>💾 <span id="memValue">0 MB</span></span>
+            </div>
+          </div>
+          <div
+            id="liveBadge"
+            class="status-badge"
+            style="display: none; margin-left: 15px"
+          >
+            <div class="status-dot"></div>
+            CANLI
+          </div>
+        </div>
+        <div class="toolbar-right">
+          <button id="toggleProcessBtn" class="action-btn start">
+            Başlat ▶
+          </button>
+        </div>
+      </div>
+      <div id="terminal-output"></div>
+    </div>
+
+    <div id="scanModal" class="modal-overlay">
+      <div class="modal-content" style="width: 600px">
+        <div class="modal-header">
+          <span>📡 Bulunan Projeler</span
+          ><span style="cursor: pointer" id="closeScanModalBtn">✕</span>
+        </div>
+        <div id="scanResultsList" class="scan-list-container"></div>
+        <div class="modal-footer" style="justify-content: flex-end">
+          <button class="btn-cancel" id="closeScanBtn">Kapat</button>
+        </div>
+      </div>
+    </div>
+    <div id="autoStartModal" class="modal-overlay">
+      <div class="modal-content" style="width: 400px">
+        <div class="modal-header">
+          <span>⚡ Otomatik Başlatma</span
+          ><span style="cursor: pointer" id="closeAutoStartModalBtn">✕</span>
+        </div>
+        <div style="font-size: 13px; color: #aaa; margin-bottom: 15px">
+          Program açıldığında otomatik olarak başlamasını istediğiniz projeleri
+          seçin.
+        </div>
+        <div
+          id="autoStartListContainer"
+          style="
+            max-height: 300px;
+            overflow-y: auto;
+            background: #121212;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 5px;
+          "
+        ></div>
+        <div class="modal-footer" style="justify-content: flex-end">
+          <button class="btn-save" id="closeAutoStartBtn">Tamam</button>
+        </div>
+      </div>
+    </div>
+    <div id="editModal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span>Düzenle</span
+          ><span style="cursor: pointer" id="closeModalBtn">✕</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Uygulama Adı</label
+          ><input type="text" id="editName" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Dosya Yolu</label>
+          <div style="display: flex; gap: 10px">
+            <input
+              type="text"
+              id="editPath"
+              class="form-input"
+              readonly
+            /><button
+              id="changePathBtn"
+              style="
+                background: #333;
+                color: white;
+                border: 1px solid #444;
+                border-radius: 6px;
+                cursor: pointer;
+              "
+            >
+              📂
+            </button>
+          </div>
+        </div>
+        <div
+          class="form-group"
+          style="
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+          "
+        >
+          <input
+            type="checkbox"
+            id="editAutoStart"
+            style="width: 16px; height: 16px; cursor: pointer"
+          />
+          <label
+            for="editAutoStart"
+            style="font-size: 13px; color: #e0e0e0; cursor: pointer"
+            >Bu projeyi program açılışında otomatik başlat</label
+          >
+        </div>
+        <div class="form-group">
+          <label class="form-label">İkon Seç</label>
+          <div class="icon-selector">
+            <div class="preset-icon" onclick="selectIcon('🚀')">🚀</div>
+            <div class="preset-icon" onclick="selectIcon('💻')">💻</div>
+            <div class="preset-icon" onclick="selectIcon('🌐')">🌐</div>
+            <div class="preset-icon" onclick="selectIcon('🎮')">🎮</div>
+            <div class="preset-icon" onclick="selectIcon('🔥')">🔥</div>
+            <button
+              id="uploadImgBtn"
+              style="
+                font-size: 11px;
+                padding: 0 10px;
+                height: 40px;
+                background: #333;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+              "
+            >
+              Resim<br />Seç
+            </button>
+          </div>
+          <div style="margin-top: 10px; font-size: 12px; color: #666">
+            Seçilen: <span id="selectedIconDisplay">🚀</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-delete" id="deleteAppBtn">Sil</button>
+          <div>
+            <button class="btn-cancel" id="cancelEditBtn">İptal</button
+            ><button class="btn-save" id="saveEditBtn">Kaydet</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="deleteModal" class="modal-overlay">
+      <div class="modal-content" style="width: 350px; text-align: center">
+        <div style="font-size: 50px; margin-bottom: 10px">⚠️</div>
+        <h3 style="margin: 0 0 10px 0; color: #fff">Emin misiniz?</h3>
+        <p style="color: #aaa; font-size: 13px; margin-bottom: 25px">
+          Bu projeyi listeden kaldırmak üzeresiniz.
+        </p>
+        <div class="modal-footer" style="justify-content: center; gap: 15px">
+          <button class="btn-cancel" id="cancelDeleteBtn" style="width: 100px">
+            Vazgeç
+          </button>
+          <button
+            class="btn-delete"
+            id="confirmDeleteBtn"
+            style="width: 100px; background: #ef4444; color: white"
+          >
+            SİL
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="alertModal" class="modal-overlay" style="z-index: 300">
+      <div class="modal-content" style="width: 350px; text-align: center">
+        <div style="font-size: 40px; margin-bottom: 15px">ℹ️</div>
+        <h3 id="alertTitle" style="margin: 0 0 10px 0; color: #fff">Bilgi</h3>
+        <p
+          id="alertMessage"
+          style="
+            color: #ccc;
+            font-size: 14px;
+            margin-bottom: 25px;
+            line-height: 1.5;
+          "
+        ></p>
+        <div class="modal-footer" style="justify-content: center">
+          <button class="btn-save" id="closeAlertModalBtn" style="width: 100%">
+            Tamam
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <a
+      href="https://github.com/KeremZayim/"
+      target="_blank"
+      id="github-link"
+      title="GitHub Profili: KeremZayim"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+      >
+        <path
+          d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+        />
+      </svg>
+    </a>
+
+    <script src="src/renderer.js"></script>
+  </body>
+</html>
