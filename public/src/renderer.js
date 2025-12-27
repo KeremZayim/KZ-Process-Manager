@@ -149,14 +149,20 @@ ipcRenderer.on("update-app-list", (event, apps) => {
   if (editModal) editModal.style.display = "none";
 });
 
+/* GÜNCELLENMİŞ RENDERER.JS BÖLÜMÜ 
+   (renderApps + Sürükleme Mantığı)
+*/
+
 async function renderApps(apps) {
   if (!appGrid) return;
+
   const appsWithStatus = await Promise.all(
     apps.map(async (app) => ({
       ...app,
       isRunning: await ipcRenderer.invoke("get-process-status", app.id),
     }))
   );
+
   let filtered = appsWithStatus;
   if (currentFilter === "running")
     filtered = appsWithStatus.filter((a) => a.isRunning);
@@ -169,9 +175,28 @@ async function renderApps(apps) {
     appGrid.innerHTML = `<div style="text-align:center; color:#555; grid-column:1/-1; margin-top:50px;">Henüz proje yok.</div>`;
     return;
   }
+
   filtered.forEach((app) => {
     const card = document.createElement("div");
     card.className = "app-card";
+
+    // --- YENİ EKLENEN KISIM (DRAG & DROP BAŞLANGICI) ---
+    // Sadece "Hepsi" filtresindeyken sürüklemeye izin verelim (sıralama bozulmasın diye)
+    if (currentFilter === 'all') {
+        card.setAttribute("draggable", "true");
+        card.dataset.id = app.id; // Sıralama için ID'yi sakla
+
+        card.addEventListener("dragstart", () => {
+          card.classList.add("dragging");
+        });
+
+        card.addEventListener("dragend", () => {
+          card.classList.remove("dragging");
+          saveNewOrder(); // Yeni sırayı kaydet
+        });
+    }
+    // ----------------------------------------------------
+
     const iconHtml =
       app.icon &&
       (app.icon.includes("/") ||
@@ -179,18 +204,90 @@ async function renderApps(apps) {
         app.icon.includes(":"))
         ? `<img src="${app.icon}" class="app-icon-img">`
         : `<div class="app-icon-emoji">${app.icon || "🚀"}</div>`;
+    
     const dotDisplay = app.isRunning ? "block" : "none";
+    
     card.innerHTML = `
         <div class="app-status-dot" id="status-dot-${app.id}" style="display: ${dotDisplay}"></div>
         <button class="edit-card-btn" onclick="openEditModal(${app.id})">⚙️</button>
         <div class="app-icon-container">${iconHtml}</div>
         <div class="app-name">${app.name}</div>
     `;
+    
     card.addEventListener("click", (e) => {
       if (!e.target.classList.contains("edit-card-btn")) openConsolePage(app);
     });
+    
     appGrid.appendChild(card);
   });
+}
+
+// --- YARDIMCI FONKSİYONLAR (RENDERER.JS'İN EN ALTINA VEYA renderApps ALTINA EKLE) ---
+
+// 1. Sürükleme sırasında elemanların yer değiştirmesi
+if (appGrid) {
+    appGrid.addEventListener("dragover", (e) => {
+      e.preventDefault(); // Bırakmaya izin ver
+      
+      const afterElement = getDragAfterElement(appGrid, e.clientX, e.clientY);
+      const draggable = document.querySelector(".dragging");
+      
+      if (!draggable) return;
+
+      if (afterElement == null) {
+        appGrid.appendChild(draggable);
+      } else {
+        appGrid.insertBefore(draggable, afterElement);
+      }
+    });
+}
+
+// 2. En yakın elemanı hesaplama (Grid yapısı için matematik)
+function getDragAfterElement(container, x, y) {
+  const draggableElements = [...container.querySelectorAll(".app-card:not(.dragging)")];
+
+  return draggableElements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    // Grid olduğu için hem X hem Y mesafesine bakıyoruz (Kare uzaklık)
+    const offsetX = x - box.left - box.width / 2;
+    const offsetY = y - box.top - box.height / 2;
+    
+    // Basit mesafe formülü (kök almaya gerek yok, kare yeterli)
+    const dist = offsetX * offsetX + offsetY * offsetY;
+
+    if (dist < closest.dist) {
+      return { offset: dist, element: child };
+    } else {
+      return closest;
+    }
+  }, { dist: Number.POSITIVE_INFINITY }).element;
+}
+
+// 3. Yeni sırayı Backend'e kaydetme
+async function saveNewOrder() {
+  // Sadece "Hepsi" seçiliyken kaydet, yoksa veri kaybı olur
+  if (currentFilter !== 'all') return;
+
+  const currentCards = [...appGrid.querySelectorAll(".app-card")];
+  const newOrderIds = currentCards.map(card => parseInt(card.dataset.id));
+  
+  // Tüm app verilerini çek
+  const allApps = await ipcRenderer.invoke("get-apps");
+  
+  // Yeni ID sırasına göre objeleri diz
+  const reorderedApps = newOrderIds
+    .map(id => allApps.find(a => a.id === id))
+    .filter(a => a !== undefined);
+  
+  // Eksik kalan varsa (filtre hatası vs.) sona ekle
+  if (reorderedApps.length !== allApps.length) {
+      // Güvenlik önlemi: Sayı tutmuyorsa kaydetme
+      console.warn("Siralama hatasi: Liste boyutu uyusmuyor.");
+      return; 
+  }
+
+  // Backend'e gönder
+  ipcRenderer.send("reorder-apps", reorderedApps);
 }
 
 window.openEditModal = async (appId) => {
@@ -483,3 +580,48 @@ if (closeScanBtn)
   closeScanBtn.addEventListener("click", () => {
     if (scanModal) scanModal.style.display = "none";
   });
+// renderer.js sonuna ekle
+
+const openSettingsBtn = document.getElementById("openSettingsBtn");
+const settingsModal = document.getElementById("settingsModal");
+const closeSettingsModalBtn = document.getElementById("closeSettingsModalBtn");
+const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const winAutoStartToggle = document.getElementById("winAutoStartToggle");
+const autoUpdateToggle = document.getElementById("autoUpdateToggle");
+const manualCheckUpdateBtn = document.getElementById("manualCheckUpdateBtn");
+const currentVerText = document.getElementById("currentVerText");
+const updateStatusMsg = document.getElementById("updateStatusMsg");
+
+if (openSettingsBtn) {
+  openSettingsBtn.addEventListener("click", async () => {
+    const settings = await ipcRenderer.invoke("get-settings");
+    winAutoStartToggle.checked = settings.winAutoStart;
+    autoUpdateToggle.checked = settings.autoUpdate;
+    settingsModal.style.display = "flex";
+  });
+}
+
+const hideSettings = () => settingsModal.style.display = "none";
+if (closeSettingsModalBtn) closeSettingsModalBtn.addEventListener("click", hideSettings);
+if (closeSettingsBtn) closeSettingsBtn.addEventListener("click", hideSettings);
+
+winAutoStartToggle.addEventListener("change", (e) => {
+  ipcRenderer.send("set-win-autostart", e.target.checked);
+});
+
+autoUpdateToggle.addEventListener("change", (e) => {
+  ipcRenderer.send("set-auto-update", e.target.checked);
+});
+
+manualCheckUpdateBtn.addEventListener("click", () => {
+  updateStatusMsg.innerText = "Denetleniyor...";
+  ipcRenderer.send("check-for-updates");
+});
+
+ipcRenderer.on("version-info", (event, version) => {
+  currentVerText.innerText = "v" + version;
+});
+
+ipcRenderer.on("update-status", (event, msg) => {
+  updateStatusMsg.innerText = msg;
+});

@@ -598,3 +598,18 @@ input:checked + .slider:before {
 .spinning {
   animation: spin 1s linear infinite;
 }
+
+/* --- SÜRÜKLEME EFEKTLERİ 
+.app-card {
+  cursor: grab;
+}
+--- */
+
+.app-card:active {
+  cursor: grabbing;
+}
+.app-card.dragging {
+  opacity: 0.5;
+  border: 2px dashed var(--accent);
+  transform: scale(0.95);
+}

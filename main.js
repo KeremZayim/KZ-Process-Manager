@@ -24,6 +24,8 @@ const path = require("path");
 const Store = require("electron-store");
 const { spawn, exec } = require("child_process");
 const pidusage = require("pidusage");
+const { autoUpdater } = require("electron-updater"); // Yeni
+const log = require("electron-log"); // Yeni
 
 const store = new Store();
 let mainWindow;
@@ -31,6 +33,9 @@ let tray = null;
 let isQuitting = false;
 let runningProcesses = {};
 let isInitialScanDone = false;
+// AutoUpdater Ayarları
+autoUpdater.logger = log;
+autoUpdater.autoDownload = store.get("settings.autoUpdate", true);
 
 // --- 1. PENCERE OLUŞTURMA ---
 function createWindow() {
@@ -55,6 +60,25 @@ function createWindow() {
       mainWindow.hide();
     }
     return false;
+  });
+  // Versiyon bilgisini frontend'e gönder
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.send("version-info", app.getVersion());
+  });
+
+  // Güncelleme Olay Dinleyicileri
+  autoUpdater.on("update-available", () => {
+    mainWindow.webContents.send(
+      "update-status",
+      "Yeni güncelleme bulundu, indiriliyor..."
+    );
+  });
+  autoUpdater.on("update-downloaded", () => {
+    mainWindow.webContents.send(
+      "update-status",
+      "Güncelleme hazır. Yeniden başlatılıyor..."
+    );
+    setTimeout(() => autoUpdater.quitAndInstall(), 3000);
   });
 }
 
@@ -194,6 +218,11 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   setInterval(runWatchdog, 3000);
+
+  // EKLENEN: Ayar açıksa güncellemeleri denetle
+  if (store.get("settings.autoUpdate", true)) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 
   setInterval(() => {
     const activePids = Object.values(runningProcesses)
@@ -340,6 +369,148 @@ function stopAllProcesses() {
   Object.keys(runningProcesses).forEach((id) => stopProcessLogic(id));
 }
 ipcMain.handle("scan-ghost-processes", async () => {
-  // Ghost scan fonksiyonu ihtiyaç olursa eklenebilir
-  return [];
+  const myPid = process.pid;
+  const resultsMap = new Map();
+  const savedApps = store.get("apps") || [];
+  
+  // Sistem servislerini hariç tutmak için
+  const IGNORED_PATHS = ["\\windows\\system32", "svchost.exe"];
+
+  try {
+    // 1. ADIM: Netstat ile port dinleyen TÜM işlemleri çek
+    // (Encoding sorunu olmaması için iconv veya chcp kullanılabilir ama basit regex iş görür)
+    const netstat = await new Promise((resolve) => {
+      exec("netstat -ano", { maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
+        if (err) resolve("");
+        else resolve(stdout);
+      });
+    });
+    
+    const lines = netstat.split(/[\r\n]+/);
+
+    for (const line of lines) {
+      const lineTrimmed = line.trim();
+      
+      // Sadece TCP bağlantıları
+      if (!lineTrimmed.startsWith("TCP")) continue;
+      
+      // Port durumu kontrolü (Türkçe/İngilizce uyumlu)
+      const lineUpper = lineTrimmed.toUpperCase();
+      const isListening = lineUpper.includes("LISTENING") || 
+                          lineUpper.includes("DINLIYOR") || 
+                          lineUpper.includes("DİNLİYOR");
+                          
+      if (!isListening) continue;
+      
+      // Satırı parçala
+      const parts = lineTrimmed.split(/\s+/);
+      // PID en sondadır
+      const pid = parseInt(parts[parts.length - 1]);
+      // Port bilgisi 2. sıradadır (0.0.0.0:3000)
+      const localAddress = parts[1];
+      
+      if (!pid || pid === myPid) continue;
+
+      // Portu temizle (IP kısmını at)
+      const port = localAddress.includes(":") ? localAddress.split(":").pop() : "???";
+
+      // 2. ADIM: Bu PID kimin? (WMIC ile detay sor)
+      // ExecutablePath ve CommandLine istiyoruz
+      const wmicOutput = await new Promise((resolve) => {
+        exec(`wmic process where processid=${pid} get CommandLine,ExecutablePath /format:csv`, 
+        { maxBuffer: 2 * 1024 * 1024 }, 
+        (err, stdout) => resolve(stdout || ""));
+      });
+
+      // WMIC çıktısını temizle
+      const wmicLines = wmicOutput.trim().split(/[\r\n]+/);
+      // Başlık satırını atla, veri satırını al
+      if (wmicLines.length < 2) continue; 
+      
+      // Veri satırı virgülle ayrılmıştır ama CommandLine içinde de virgül olabilir.
+      // Bu yüzden sondan (ExecutablePath) başa doğru gidelim ya da basitçe string check yapalım.
+      const rawData = wmicLines.slice(1).join(" "); // Bazen birden fazla satıra taşabilir
+      const lowerData = rawData.toLowerCase();
+
+      // KRİTİK KONTROL: Bu bir Node.js işlemi mi?
+      // Sadece node.exe veya electron.exe ise kabul et.
+      const isNode = lowerData.includes("node.exe") || lowerData.includes("electron.exe");
+      
+      if (!isNode) continue;
+
+      // --- PATH VE İSİM BULMA MANTIĞI ---
+      let displayPath = "Bilinmeyen Konum";
+      let displayName = `Node App (Port ${port})`;
+
+      // 1. Deneme: .js dosyası var mı?
+      const jsMatch = rawData.match(/(?:"|')([^"']+\.(?:js|mjs|cjs))(?:"|')|([^\s"']+\.(?:js|mjs|cjs))/i);
+      
+      // 2. Deneme: Eğer .js yoksa, 'npm start' gibi bir şey mi?
+      // Genelde CommandLine içinde çalışılan klasör yazar
+      
+      if (jsMatch) {
+        displayPath = jsMatch[1] || jsMatch[2];
+        displayName = path.basename(displayPath);
+      } else {
+        // Dosya bulunamadı ama Node çalışıyor (Örn: REPL veya Binary)
+        // ExecutablePath'i kullanabiliriz veya CommandLine'ın tamamını gösteririz
+        displayPath = rawData.split(",").pop() || "Yol Bulunamadi"; // Kabaca path almaya çalış
+        
+        // Eğer yol çok uzunsa veya bozuksa temizle
+        if(displayPath.length > 100) displayPath = "Komut Satiri Baslatmasi";
+        
+        displayName = "Node Script/Servis";
+      }
+
+      // Sistem dosyası koruması
+      if (IGNORED_PATHS.some(p => lowerData.includes(p))) continue;
+
+      // Kayıtlı uygulamalarda zaten bu Port var mı?
+      // (Eğer varsa ghost olarak gösterme, zaten takipli)
+      // Ancak kullanıcı "bulmuyor" dediği için bu kontrolü esnetelim, her şeyi göstersin.
+      
+      // Benzersiz ID (PID + Port)
+      const uniqueKey = `ghost_${pid}_${port}`;
+
+      if (!resultsMap.has(uniqueKey)) {
+        resultsMap.set(uniqueKey, {
+          pid: pid,
+          port: port,
+          path: displayPath,
+          name: `🌍 Port ${port} - ${displayName}`,
+          memory: `PID: ${pid}`
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Ghost scan hatasi:", error);
+  }
+
+  return [...resultsMap.values()];
+});
+
+// --- YENİ AYARLAR VE GÜNCELLEME KONTROLLERİ ---
+ipcMain.handle("get-settings", () => ({
+  winAutoStart: app.getLoginItemSettings().openAtLogin,
+  autoUpdate: store.get("settings.autoUpdate", true),
+}));
+// --- MEVCUT IPC HANDLERLARIN ALTINA EKLE ---
+
+ipcMain.on("reorder-apps", (event, newAppsList) => {
+  store.set("apps", newAppsList);
+  // Listeyi diğer pencerelere de (varsa) güncelle
+  event.sender.send("update-app-list", newAppsList);
+});
+
+ipcMain.on("set-win-autostart", (event, value) => {
+  app.setLoginItemSettings({ openAtLogin: value });
+});
+
+ipcMain.on("set-auto-update", (event, value) => {
+  store.set("settings.autoUpdate", value);
+  autoUpdater.autoDownload = value;
+});
+
+ipcMain.on("check-for-updates", () => {
+  autoUpdater.checkForUpdatesAndNotify();
 });
