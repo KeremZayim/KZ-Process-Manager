@@ -625,3 +625,34 @@ ipcRenderer.on("version-info", (event, version) => {
 ipcRenderer.on("update-status", (event, msg) => {
   updateStatusMsg.innerText = msg;
 });
+
+const whatsNewModal = document.getElementById("whatsNewModal");
+const whatsNewContent = document.getElementById("whatsNewContent");
+const whatsNewTitle = document.getElementById("whatsNewTitle");
+const closeWhatsNewModalBtn = document.getElementById("closeWhatsNewModalBtn");
+const closeWhatsNewBtn = document.getElementById("closeWhatsNewBtn");
+
+ipcRenderer.on("show-whats-new", async (event, version) => {
+  whatsNewTitle.innerText = `🚀 Sürüm v${version} Yenilikleri`;
+  whatsNewModal.style.display = "flex";
+
+  try {
+    // GitHub API kullanarak son release notlarını çekiyoruz
+    const response = await fetch("https://api.github.com/repos/KeremZayim/KZ-Process-Manager/releases/latest");
+    const data = await response.json();
+
+    if (data.body) {
+      whatsNewContent.innerText = data.body;
+    } else {
+      whatsNewContent.innerText = "Bu sürüm için sürüm notu bulunamadı.";
+    }
+  } catch (err) {
+    whatsNewContent.innerText = "Sürüm notları yüklenirken bir hata oluştu, ancak uygulamanız başarıyla güncellendi!";
+    console.error("GitHub API Hatası:", err);
+  }
+});
+
+const hideWhatsNew = () => whatsNewModal.style.display = "none";
+if (closeWhatsNewModalBtn) closeWhatsNewModalBtn.addEventListener("click", hideWhatsNew);
+if (closeWhatsNewBtn) closeWhatsNewBtn.addEventListener("click", hideWhatsNew);
+

@@ -8,16 +8,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
-  "keywords": [
-    "node",
-    "launcher",
-    "process-manager",
-    "dashboard",
-    "electron"
-  ],
   "author": "Kerem Zayim",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "electron-log": "^5.4.3",
     "electron-store": "^6.0.1",
@@ -32,10 +24,18 @@
   },
   "build": {
     "appId": "com.keremzayim.nodelauncher",
-    "productName": "KZ | Node Launcher",
+    "productName": "KZ-Node-Launcher",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "KeremZayim",
+        "repo": "KZ-Process-Manager"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "public/images/icon.png"

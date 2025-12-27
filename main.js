@@ -28,11 +28,28 @@ const { autoUpdater } = require("electron-updater"); // Yeni
 const log = require("electron-log"); // Yeni
 
 const store = new Store();
+// --- TEKİL ÖRNEK KİLİDİ (SINGLE INSTANCE LOCK) ---
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  // Eğer kilit alınamadıysa (yani program zaten açıksa), bu ikinci kopyayı kapat
+  app.quit();
+} else {
+  // İkinci bir kopya açılmaya çalışıldığında tetiklenir
+  app.on("second-instance", (event, commandLine, workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore(); // Simge durumundaysa geri getir
+      if (!mainWindow.isVisible()) mainWindow.show(); // Gizliyse (Tray'deyse) göster
+      mainWindow.focus(); // Pencereyi öne getir ve odaklan
+    }
+  });
+}
+
 let mainWindow;
 let tray = null;
 let isQuitting = false;
 let runningProcesses = {};
 let isInitialScanDone = false;
+
 // AutoUpdater Ayarları
 autoUpdater.logger = log;
 autoUpdater.autoDownload = store.get("settings.autoUpdate", true);
@@ -54,6 +71,7 @@ function createWindow() {
   mainWindow.webContents.on("did-finish-load", () => {
     if (!isInitialScanDone) setTimeout(runWatchdog, 1000);
   });
+
   mainWindow.on("close", (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -67,19 +85,52 @@ function createWindow() {
   });
 
   // Güncelleme Olay Dinleyicileri
-  autoUpdater.on("update-available", () => {
+  autoUpdater.on("update-available", (info) => {
     mainWindow.webContents.send(
       "update-status",
-      "Yeni güncelleme bulundu, indiriliyor..."
+      `Yeni sürüm bulundu (v${info.version}). İndiriliyor...`
     );
   });
-  autoUpdater.on("update-downloaded", () => {
+
+  autoUpdater.on("download-progress", (progressObj) => {
+    let log_message = "İndiriliyor: %" + Math.floor(progressObj.percent);
+    mainWindow.webContents.send("update-status", log_message);
+  });
+  autoUpdater.on("update-downloaded", (info) => {
     mainWindow.webContents.send(
       "update-status",
-      "Güncelleme hazır. Yeniden başlatılıyor..."
+      "Güncelleme hazır. 5 saniye içinde kurulacak..."
     );
-    setTimeout(() => autoUpdater.quitAndInstall(), 3000);
+
+    // Kullanıcıyı bekletmeden veya zorlayarak kurmak için:
+    setTimeout(() => {
+      autoUpdater.quitAndInstall();
+    }, 5000);
   });
+
+  autoUpdater.on("error", (err) => {
+    // Hatanın detayını frontend'e gönder
+    mainWindow.webContents.send("update-status", "Hata: " + err.message);
+    console.error("GÜNCELLEME DETAYLI HATA:", err);
+  });
+
+  // Güncelleme bulunamadığında "Denetleniyor" yazısında takılmaması için:
+  autoUpdater.on("update-not-available", () => {
+    mainWindow.webContents.send("update-status", "Uygulama güncel.");
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    const lastRunVersion = store.get("lastRunVersion", "0.0.0");
+    const currentVersion = app.getVersion();
+
+    // Eğer kurulu versiyon, son çalıştırılan versiyondan büyükse (Update olduysa)
+    if (currentVersion !== lastRunVersion) {
+      mainWindow.webContents.send("show-whats-new", currentVersion);
+      // Yeni versiyonu kaydet ki bir sonraki açılışta tekrar çıkmasın
+      store.set("lastRunVersion", currentVersion);
+    }
+  });
+
 }
 
 // --- 2. TRAY MENÜSÜ ---
@@ -372,7 +423,7 @@ ipcMain.handle("scan-ghost-processes", async () => {
   const myPid = process.pid;
   const resultsMap = new Map();
   const savedApps = store.get("apps") || [];
-  
+
   // Sistem servislerini hariç tutmak için
   const IGNORED_PATHS = ["\\windows\\system32", "svchost.exe"];
 
@@ -385,48 +436,53 @@ ipcMain.handle("scan-ghost-processes", async () => {
         else resolve(stdout);
       });
     });
-    
+
     const lines = netstat.split(/[\r\n]+/);
 
     for (const line of lines) {
       const lineTrimmed = line.trim();
-      
+
       // Sadece TCP bağlantıları
       if (!lineTrimmed.startsWith("TCP")) continue;
-      
+
       // Port durumu kontrolü (Türkçe/İngilizce uyumlu)
       const lineUpper = lineTrimmed.toUpperCase();
-      const isListening = lineUpper.includes("LISTENING") || 
-                          lineUpper.includes("DINLIYOR") || 
-                          lineUpper.includes("DİNLİYOR");
-                          
+      const isListening =
+        lineUpper.includes("LISTENING") ||
+        lineUpper.includes("DINLIYOR") ||
+        lineUpper.includes("DİNLİYOR");
+
       if (!isListening) continue;
-      
+
       // Satırı parçala
       const parts = lineTrimmed.split(/\s+/);
       // PID en sondadır
       const pid = parseInt(parts[parts.length - 1]);
       // Port bilgisi 2. sıradadır (0.0.0.0:3000)
       const localAddress = parts[1];
-      
+
       if (!pid || pid === myPid) continue;
 
       // Portu temizle (IP kısmını at)
-      const port = localAddress.includes(":") ? localAddress.split(":").pop() : "???";
+      const port = localAddress.includes(":")
+        ? localAddress.split(":").pop()
+        : "???";
 
       // 2. ADIM: Bu PID kimin? (WMIC ile detay sor)
       // ExecutablePath ve CommandLine istiyoruz
       const wmicOutput = await new Promise((resolve) => {
-        exec(`wmic process where processid=${pid} get CommandLine,ExecutablePath /format:csv`, 
-        { maxBuffer: 2 * 1024 * 1024 }, 
-        (err, stdout) => resolve(stdout || ""));
+        exec(
+          `wmic process where processid=${pid} get CommandLine,ExecutablePath /format:csv`,
+          { maxBuffer: 2 * 1024 * 1024 },
+          (err, stdout) => resolve(stdout || "")
+        );
       });
 
       // WMIC çıktısını temizle
       const wmicLines = wmicOutput.trim().split(/[\r\n]+/);
       // Başlık satırını atla, veri satırını al
-      if (wmicLines.length < 2) continue; 
-      
+      if (wmicLines.length < 2) continue;
+
       // Veri satırı virgülle ayrılmıştır ama CommandLine içinde de virgül olabilir.
       // Bu yüzden sondan (ExecutablePath) başa doğru gidelim ya da basitçe string check yapalım.
       const rawData = wmicLines.slice(1).join(" "); // Bazen birden fazla satıra taşabilir
@@ -434,8 +490,9 @@ ipcMain.handle("scan-ghost-processes", async () => {
 
       // KRİTİK KONTROL: Bu bir Node.js işlemi mi?
       // Sadece node.exe veya electron.exe ise kabul et.
-      const isNode = lowerData.includes("node.exe") || lowerData.includes("electron.exe");
-      
+      const isNode =
+        lowerData.includes("node.exe") || lowerData.includes("electron.exe");
+
       if (!isNode) continue;
 
       // --- PATH VE İSİM BULMA MANTIĞI ---
@@ -443,11 +500,13 @@ ipcMain.handle("scan-ghost-processes", async () => {
       let displayName = `Node App (Port ${port})`;
 
       // 1. Deneme: .js dosyası var mı?
-      const jsMatch = rawData.match(/(?:"|')([^"']+\.(?:js|mjs|cjs))(?:"|')|([^\s"']+\.(?:js|mjs|cjs))/i);
-      
+      const jsMatch = rawData.match(
+        /(?:"|')([^"']+\.(?:js|mjs|cjs))(?:"|')|([^\s"']+\.(?:js|mjs|cjs))/i
+      );
+
       // 2. Deneme: Eğer .js yoksa, 'npm start' gibi bir şey mi?
       // Genelde CommandLine içinde çalışılan klasör yazar
-      
+
       if (jsMatch) {
         displayPath = jsMatch[1] || jsMatch[2];
         displayName = path.basename(displayPath);
@@ -455,20 +514,20 @@ ipcMain.handle("scan-ghost-processes", async () => {
         // Dosya bulunamadı ama Node çalışıyor (Örn: REPL veya Binary)
         // ExecutablePath'i kullanabiliriz veya CommandLine'ın tamamını gösteririz
         displayPath = rawData.split(",").pop() || "Yol Bulunamadi"; // Kabaca path almaya çalış
-        
+
         // Eğer yol çok uzunsa veya bozuksa temizle
-        if(displayPath.length > 100) displayPath = "Komut Satiri Baslatmasi";
-        
+        if (displayPath.length > 100) displayPath = "Komut Satiri Baslatmasi";
+
         displayName = "Node Script/Servis";
       }
 
       // Sistem dosyası koruması
-      if (IGNORED_PATHS.some(p => lowerData.includes(p))) continue;
+      if (IGNORED_PATHS.some((p) => lowerData.includes(p))) continue;
 
       // Kayıtlı uygulamalarda zaten bu Port var mı?
       // (Eğer varsa ghost olarak gösterme, zaten takipli)
       // Ancak kullanıcı "bulmuyor" dediği için bu kontrolü esnetelim, her şeyi göstersin.
-      
+
       // Benzersiz ID (PID + Port)
       const uniqueKey = `ghost_${pid}_${port}`;
 
@@ -478,7 +537,7 @@ ipcMain.handle("scan-ghost-processes", async () => {
           port: port,
           path: displayPath,
           name: `🌍 Port ${port} - ${displayName}`,
-          memory: `PID: ${pid}`
+          memory: `PID: ${pid}`,
         });
       }
     }
@@ -514,3 +573,4 @@ ipcMain.on("set-auto-update", (event, value) => {
 ipcMain.on("check-for-updates", () => {
   autoUpdater.checkForUpdatesAndNotify();
 });
+

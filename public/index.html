@@ -188,6 +188,7 @@
         </div>
       </div>
     </div>
+
     <div id="autoStartModal" class="modal-overlay">
       <div class="modal-content" style="width: 400px">
         <div class="modal-header">
@@ -214,6 +215,7 @@
         </div>
       </div>
     </div>
+
     <div id="editModal" class="modal-overlay">
       <div class="modal-content">
         <div class="modal-header">
@@ -305,6 +307,7 @@
         </div>
       </div>
     </div>
+
     <div id="deleteModal" class="modal-overlay">
       <div class="modal-content" style="width: 350px; text-align: center">
         <div style="font-size: 50px; margin-bottom: 10px">⚠️</div>
@@ -326,6 +329,7 @@
         </div>
       </div>
     </div>
+
     <div id="alertModal" class="modal-overlay" style="z-index: 300">
       <div class="modal-content" style="width: 350px; text-align: center">
         <div style="font-size: 40px; margin-bottom: 15px">ℹ️</div>
@@ -346,6 +350,35 @@
         </div>
       </div>
     </div>
+
+    <div id="whatsNewModal" class="modal-overlay" style="z-index: 500">
+      <div class="modal-content" style="width: 500px; max-height: 80vh">
+        <div class="modal-header">
+          <span id="whatsNewTitle">🚀 Yeni Sürüm Yayında!</span>
+          <span style="cursor: pointer" id="closeWhatsNewModalBtn">✕</span>
+        </div>
+        <div
+          id="whatsNewContent"
+          style="
+            padding: 15px 0;
+            font-size: 14px;
+            color: #ccc;
+            line-height: 1.6;
+            overflow-y: auto;
+            max-height: 350px;
+            white-space: pre-wrap;
+          "
+        >
+          Yükleniyor...
+        </div>
+        <div class="modal-footer">
+          <button class="btn-save" id="closeWhatsNewBtn" style="width: 100%">
+            Harika!
+          </button>
+        </div>
+      </div>
+    </div>
+
     <button
       id="openSettingsBtn"
       title="Ayarlar"
@@ -474,6 +507,7 @@
         </div>
       </div>
     </div>
+
     <a
       href="https://github.com/KeremZayim/"
       target="_blank"
